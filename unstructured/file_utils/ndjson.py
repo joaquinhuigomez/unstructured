@@ -4,7 +4,23 @@ streaming json content that would otherwise not be possible using raw JSON files
 """
 
 import json
+import re
 from typing import IO, Any
+
+_LINE_BREAK_RE = re.compile(r"\r\n|\r|\n")
+
+
+def split_lines(s: str) -> list[str]:
+    """Split NDJSON text into lines on LF, CRLF and CR only.
+
+    Unlike `str.splitlines()`, this does not split on U+0085, U+2028 or U+2029, which JSON allows
+    unescaped inside a string value. A trailing line break does not produce a final empty line,
+    matching `str.splitlines()`.
+    """
+    lines = _LINE_BREAK_RE.split(s)
+    if lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 def dumps(obj: list[dict[str, Any]], **kwargs) -> str:
@@ -50,7 +66,7 @@ def loads(s: str, **kwargs) -> list[dict[str, Any]]:
     Returns:
         list[dict[str, Any]]: List of dictionaries parsed from the input string
     """
-    return [json.loads(line, **kwargs) for line in s.splitlines()]
+    return [json.loads(line, **kwargs) for line in split_lines(s)]
 
 
 def load(fp: IO, **kwargs) -> list[dict[str, Any]]:

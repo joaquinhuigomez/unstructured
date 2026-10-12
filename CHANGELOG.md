@@ -1,3 +1,9 @@
+## 0.27.27
+
+### Fixes
+
+- **Split NDJSON records on line breaks only.** `partition_ndjson()`, NDJSON file-type detection and `unstructured.file_utils.ndjson.loads()` split records with `str.splitlines()`, which also splits on U+0085, U+2028 and U+2029. JSON allows those characters unescaped inside a string (`json.dumps(..., ensure_ascii=False)` and JavaScript's `JSON.stringify()` emit them raw), so a valid record was cut in two and the file was rejected with "Not a valid ndjson". Records are now split on `\n`, `\r\n` and `\r` only.
+
 ## 0.27.26
 
 ### Enhancements

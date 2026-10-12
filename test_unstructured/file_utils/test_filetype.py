@@ -678,6 +678,17 @@ def and_it_classifies_an_arbitrary_ndjson_file_as_NDJSON():
     assert detect_filetype(example_doc_path("arbitrary-records.ndjson")) == FileType.NDJSON
 
 
+@pytest.mark.parametrize("char", ["\u0085", "\u2028", "\u2029"])
+def and_it_classifies_NDJSON_with_a_unicode_line_break_inside_a_string_as_NDJSON(char: str):
+    # -- JSON allows U+0085, U+2028 and U+2029 unescaped inside a string; they do not separate
+    # -- records, so this two-record payload must not be split into three non-JSON lines --
+    payload = (
+        json.dumps({"body": f"first{char}second"}, ensure_ascii=False) + "\n" + '{"body": "ok"}\n'
+    ).encode()
+    filetype = detect_filetype(file=io.BytesIO(payload), content_type="application/json")
+    assert filetype == FileType.NDJSON
+
+
 def it_routes_not_unstructured_payload_json_away_from_ndjson_via_detect_filetype():
     file_type = detect_filetype(example_doc_path("not-unstructured-payload.json"))
     # A multi-line single-object JSON file used to get classified as NDJSON. It should now end up

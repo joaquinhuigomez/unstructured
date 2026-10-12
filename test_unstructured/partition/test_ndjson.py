@@ -14,6 +14,7 @@ from pytest_mock import MockFixture
 from test_unstructured.unit_utils import example_doc_path
 from unstructured.documents.elements import CompositeElement, TableChunk, Text, Title
 from unstructured.file_utils.model import FileType
+from unstructured.partition.auto import partition
 from unstructured.partition.email import partition_email
 from unstructured.partition.html import partition_html
 from unstructured.partition.ndjson import partition_ndjson
@@ -358,6 +359,53 @@ def it_still_raises_when_the_file_contains_a_malformed_line():
 
     with pytest.raises(ValueError):
         partition_ndjson(text=text)
+
+
+# -- JSON allows U+0085, U+2028 and U+2029 unescaped inside a string, and `json.dumps()` with
+# -- `ensure_ascii=False` (or JavaScript's `JSON.stringify()`) emits them raw. They are not record
+# -- separators, unlike the line breaks `str.splitlines()` also splits on --
+_UNICODE_LINE_BREAKS = pytest.mark.parametrize(
+    "char", ["\u0085", "\u2028", "\u2029"], ids=["NEL", "LINE-SEP", "PARA-SEP"]
+)
+
+
+@_UNICODE_LINE_BREAKS
+def it_does_not_split_a_record_on_a_unicode_line_break_inside_a_string(char: str):
+    records = [{"id": 1, "body": f"first{char}second"}, {"id": 2, "body": "ok"}]
+    text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+
+    elements = partition_ndjson(text=text)
+
+    assert [json.loads(e.text) for e in elements] == records
+
+
+@_UNICODE_LINE_BREAKS
+def and_it_does_so_when_auto_partitioning_an_ndjson_file(char: str, tmp_path: pathlib.Path):
+    records = [{"id": 1, "body": f"first{char}second"}, {"id": 2, "body": "ok"}]
+    file_path = tmp_path / "records.ndjson"
+    file_path.write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8"
+    )
+
+    elements = partition(filename=str(file_path))
+
+    assert [json.loads(e.text) for e in elements] == records
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"sku": "A-100"}\r\n{"sku": "B-200"}\r\n',
+        '{"sku": "A-100"}\r{"sku": "B-200"}\r',
+        '{"sku": "A-100"}\n{"sku": "B-200"}',
+        '\n{"sku": "A-100"}\n\n\r\n{"sku": "B-200"}\n\n',
+    ],
+    ids=["CRLF", "CR", "no-trailing-newline", "blank-lines"],
+)
+def and_it_still_splits_records_on_CR_and_LF_line_breaks(text: str):
+    elements = partition_ndjson(text=text)
+
+    assert [json.loads(e.text) for e in elements] == [{"sku": "A-100"}, {"sku": "B-200"}]
 
 
 def it_still_rehydrates_serialized_element_ndjson_rather_than_partitioning_it():
